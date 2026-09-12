@@ -1,0 +1,8 @@
+# Yoyos Devices — Pro Series
+# Replace YOUR-DOMAIN with the live host once Netlify is connected,
+# then delete the "#" in front of the Sitemap line.
+
+User-agent: *
+Allow: /
+
+# Sitemap: https://YOUR-DOMAIN/sitemap.xml
