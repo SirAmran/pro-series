@@ -298,6 +298,24 @@ p{margin:0 0 1em}
   background:var(--surface);border-radius:var(--r-sm);padding:13px 16px
 }
 .hp{position:absolute!important;left:-9999px!important}
+.form-status{display:none;margin:14px 0 0;padding:12px 16px;border-radius:var(--r-sm);font-size:.88rem;font-weight:600;text-align:center;background:#fdecec;color:#a5210f;border:1px solid #f5cdc7}
+.form-status.show{display:block}
+
+/* ---- order confirmation (replaces the form once the order is sent) ---- */
+.order-success{display:none;background:#fff;border:1px solid var(--border);border-radius:var(--r-lg);padding:clamp(26px,4vw,44px);box-shadow:var(--shadow-md);max-width:720px;margin:0 auto;text-align:center}
+.order-success.show{display:block;animation:fadeUpIn .45s cubic-bezier(.22,1,.36,1)}
+@keyframes fadeUpIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.success-check{display:inline-grid;place-items:center;width:64px;height:64px;border-radius:50%;background:var(--success-soft);color:var(--success);margin-bottom:16px}
+.success-check svg{width:28px;height:28px}
+.order-success h2{margin-bottom:10px}
+.success-sub{color:var(--ink-soft);margin-bottom:6px}
+.success-note{font-weight:700;margin-bottom:22px}
+.success-card{background:var(--surface);border-radius:var(--r-md);padding:4px 18px;margin-bottom:20px;text-align:left}
+.success-row{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:13px 0;border-bottom:1px solid var(--border);font-size:.92rem}
+.success-row:last-child{border-bottom:none}
+.success-row span{color:var(--ink-faint);flex:none}
+.success-row strong{text-align:right;word-break:break-word}
+.success-tip{display:flex;gap:9px;align-items:flex-start;background:var(--success-soft);color:var(--success);border-radius:var(--r-md);padding:14px 18px;font-size:.88rem;font-weight:600;text-align:left;margin-bottom:22px}
 
 .faq details{border-bottom:1px solid var(--border);padding:16px 0}
 .faq summary{
@@ -556,6 +574,7 @@ footer strong{color:#fff;font-family:var(--font-display);font-weight:800;font-si
     <form class="order-card reveal" name="pro-series-order" method="POST" data-netlify="true"
           data-netlify-honeypot="bot-field" id="orderForm" novalidate>
       <input type="hidden" name="form-name" value="pro-series-order">
+      <input type="hidden" name="orderReference" id="orderReference" value="">
       <p class="hp"><label>Don't fill this out if you're human: <input name="bot-field"></label></p>
 
       <div class="field">
@@ -605,11 +624,36 @@ footer strong{color:#fff;font-family:var(--font-display);font-weight:800;font-si
       </div>
 
       <button type="submit" class="btn btn-primary btn-block" id="submitBtn">Place Order</button>
+      <p class="form-status" id="formStatus"></p>
 
       <p class="form-note">
         <strong>Delivery is 3–5 days outside Lagos.</strong> You pay the rider when it arrives.
       </p>
     </form>
+
+    <div class="order-success" id="orderSuccess" role="status" aria-live="polite">
+      <span class="success-check" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+      </span>
+      <h2>Order received</h2>
+      <p class="success-sub">Thanks — your order has been received and is being processed.</p>
+      <p class="success-note">Our team will contact you within 24 hours to confirm delivery.</p>
+
+      <div class="success-card">
+        <div class="success-row"><span>Order reference</span><strong id="srRef"></strong></div>
+        <div class="success-row"><span>Package</span><strong id="srPackage"></strong></div>
+        <div class="success-row"><span>Contact number</span><strong id="srPhone"></strong></div>
+        <div class="success-row"><span>Delivery</span><strong>3–5 days outside Lagos</strong></div>
+        <div class="success-row"><span>Payment</span><strong>Collect on delivery</strong></div>
+      </div>
+
+      <div class="success-tip">
+        <span aria-hidden="true">✓</span>
+        <span>Keep your phone reachable — we'll call or WhatsApp you to confirm your address before dispatch.</span>
+      </div>
+
+      <button type="button" class="btn btn-ghost btn-block" id="successDone">Done</button>
+    </div>
   </div>
 </section>
 
@@ -845,7 +889,42 @@ const CONFIG = {
   $$("input,select,textarea", form).forEach(el =>
     el.addEventListener("input", () => mark(el, false)));
 
+  /* ---------- order submission + confirmation ---------- */
+  /* Reference format is PRODUCTCODE-MMDDHHMMSS-XX. The two trailing
+     letters are random so two orders in the same second never collide. */
+  const orderReference = () => {
+    const d = new Date(), p = n => String(n).padStart(2, "0");
+    const stamp = p(d.getMonth() + 1) + p(d.getDate()) + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+    const L = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    return "PROSERIES-" + stamp + "-" + L[Math.floor(Math.random() * 26)] + L[Math.floor(Math.random() * 26)];
+  };
+
+  const successPanel = $("#orderSuccess");
+  const setStatus = msg => {
+    const s = $("#formStatus");
+    s.textContent = msg || "";
+    s.classList.toggle("show", !!msg);
+  };
+  const lockForm = on => {
+    $$("input,select,textarea", form).forEach(el => { el.disabled = on; });
+    const btn = $("#submitBtn");
+    btn.disabled = on;
+    btn.textContent = on ? "Placing your order…" : "Place Order";
+  };
+
+  const showSuccess = ref => {
+    const t = CONFIG.tiers.find(x => String(x.qty) === sel.value);
+    $("#srRef").textContent = ref;
+    $("#srPackage").textContent = t ? t.label + " — " + money(t.price) : "—";
+    $("#srPhone").textContent = $("#phone").value.trim();
+    form.style.display = "none";
+    successPanel.classList.add("show");
+    successPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   form.addEventListener("submit", e => {
+    e.preventDefault();
+
     let ok = true, firstBad = null;
     $$("input,select,textarea", form).filter(el => el.required && el.type !== "hidden").forEach(el => {
       const good = check(el);
@@ -853,14 +932,46 @@ const CONFIG = {
       ok = ok && good;
     });
     if (!ok) {
-      e.preventDefault();
       if (firstBad) firstBad.focus();
       return;
     }
-    track("Lead", { content_name: "Pro Series", value: (CONFIG.tiers.find(t => String(t.qty) === sel.value) || {}).price, currency: "NGN" });
-    const btn = $("#submitBtn");
-    btn.disabled = true;
-    btn.textContent = "Sending…";
+
+    const tier = CONFIG.tiers.find(t => String(t.qty) === sel.value);
+    const ref = orderReference();
+    $("#orderReference").value = ref;
+    setStatus("");
+
+    /* Build the body BEFORE locking the form — disabled fields drop out
+       of FormData, which would silently submit an empty order. */
+    const body = new URLSearchParams(new FormData(form)).toString();
+    lockForm(true);
+
+    /* Netlify Forms accepts an AJAX post to the page's own path, as long
+       as the url-encoded body still carries form-name. This is what lets
+       the confirmation render here instead of on Netlify's thank-you page. */
+    fetch(window.location.pathname, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body
+    }).then(r => {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      track("Lead", { content_name: "Pro Series", value: tier ? tier.price : undefined, currency: "NGN" });
+      showSuccess(ref);
+    }).catch(() => {
+      lockForm(false);
+      setStatus("We couldn't send your order just now. Please try again, or reach us on WhatsApp and we'll take it from there.");
+    });
+  });
+
+  $("#successDone").addEventListener("click", () => {
+    successPanel.classList.remove("show");
+    form.style.display = "";
+    form.reset();
+    $("#orderReference").value = "";
+    $$(".field", form).forEach(f => f.classList.remove("err"));
+    setStatus("");
+    lockForm(false);
+    document.getElementById("order").scrollIntoView({ behavior: "smooth", block: "start" });
   });
 
   /* ---------- reveal on scroll ---------- */
