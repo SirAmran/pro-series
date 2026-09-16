@@ -1,4 +1,4 @@
-# Yoyos Devices — Pro Series
+# Yoyos Devices, Pro Series
 # Replace YOUR-DOMAIN with the live host once Netlify is connected,
 # then delete the "#" in front of the Sitemap line.
 
